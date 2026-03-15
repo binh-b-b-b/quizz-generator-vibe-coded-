@@ -6,6 +6,7 @@ const state = {
   difficulty: "easy",
   questionType: "multiple-choice",
   timerChoice: "None",
+  docTimerChoice: "None",
   selectedFile: null,
   questions: [],
   answers: {},          // { index: answerRecord }
@@ -118,6 +119,7 @@ function setPill(btn, group) {
   btn.classList.add("active")
   if (group === "difficulty") state.difficulty = btn.textContent.trim()
   if (group === "timer") state.timerChoice = btn.textContent.trim()
+  if (group === "doc-timer") state.docTimerChoice = btn.textContent.trim()
 }
 
 function setType(btn, type) {
@@ -207,7 +209,9 @@ async function startDocQuiz() {
 
   if (!res.ok) return showError("doc-error", data.detail || "Failed to parse document")
 
-  initQuiz(data, null)
+  const map = { "None": null, "10 min": 600, "20 min": 1200, "30 min": 1800 }
+  const timeLimit = map[state.docTimerChoice] ?? null
+  initQuiz(data, timeLimit)
 }
 
 // ── Quiz initialisation ───────────────────────────────
@@ -565,14 +569,29 @@ function showResults(result) {
 // ── Retry wrong answers ───────────────────────────────
 
 function retryWrongAnswers() {
+  const total = state.questions.length
+
+  // Collect wrong answers
   const wrongIndices = Object.entries(state.answers)
     .filter(([, a]) => !a.isCorrect)
     .map(([i]) => parseInt(i))
 
-  if (wrongIndices.length === 0) { showToast("No wrong answers to retry!"); return }
+  // Collect unanswered questions
+  const unansweredIndices = Array.from({ length: total }, (_, i) => i)
+    .filter(i => state.answers[i] === undefined)
 
-  const wrongQuestions = wrongIndices.map(i => state.questions[i])
-  initQuiz(wrongQuestions, null)
+  // Merge and deduplicate, preserve original order
+  const retryIndices = [...new Set([...wrongIndices, ...unansweredIndices])]
+    .sort((a, b) => a - b)
+
+  if (retryIndices.length === 0) {
+    showToast("All questions answered correctly!")
+    return
+  }
+
+  const retryQuestions = retryIndices.map(i => state.questions[i])
+  showToast(`Retrying ${retryIndices.length} question(s)`)
+  initQuiz(retryQuestions, null)
 }
 
 // ── Quit ──────────────────────────────────────────────

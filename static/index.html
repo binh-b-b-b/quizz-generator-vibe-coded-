@@ -111,6 +111,15 @@
         </div>
         <p id="file-name" class="file-name hidden"></p>
       </div>
+      <div class="field">
+        <label>Time limit (optional)</label>
+        <div class="pill-group">
+          <button class="pill active" onclick="setPill(this,'doc-timer')">None</button>
+          <button class="pill" onclick="setPill(this,'doc-timer')">10 min</button>
+          <button class="pill" onclick="setPill(this,'doc-timer')">20 min</button>
+          <button class="pill" onclick="setPill(this,'doc-timer')">30 min</button>
+        </div>
+      </div>
       <div id="doc-error" class="error-msg hidden"></div>
       <button class="btn-primary" onclick="startDocQuiz()">Start Quiz →</button>
     </div>
