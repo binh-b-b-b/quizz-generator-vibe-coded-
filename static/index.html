@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>QuizGen</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+
+<!-- AUTH PAGE -->
+<div id="page-auth" class="page active">
+  <div class="auth-box">
+    <h1 class="logo">QuizGen</h1>
+    <p class="subtitle">AI-powered quiz generator</p>
+    <div class="tab-row">
+      <button class="tab active" onclick="authTab('login')">Login</button>
+      <button class="tab" onclick="authTab('register')">Register</button>
+    </div>
+    <div id="auth-form">
+      <input id="auth-username" type="text" placeholder="Username" />
+      <input id="auth-password" type="password" placeholder="Password" />
+      <div id="auth-error" class="error-msg hidden"></div>
+      <button class="btn-primary" onclick="submitAuth()">Login</button>
+    </div>
+  </div>
+</div>
+
+<!-- SETUP PAGE -->
+<div id="page-setup" class="page">
+  <nav class="topnav">
+    <span class="nav-logo">QuizGen</span>
+    <div class="nav-links">
+      <button class="btn-ghost" onclick="switchPage('analytics')">Analytics</button>
+      <button class="btn-ghost" onclick="switchPage('history')">History</button>
+      <button class="btn-ghost" onclick="logout()">Logout</button>
+    </div>
+  </nav>
+
+  <div class="setup-content">
+    <h2>New Quiz</h2>
+
+    <!-- AI Generate Tab -->
+    <div class="source-tabs">
+      <button class="tab active" onclick="sourceTab('ai')">AI Generate</button>
+      <button class="tab" onclick="sourceTab('doc')">From Document</button>
+    </div>
+
+    <div id="source-ai">
+      <div class="field">
+        <label>Topic</label>
+        <input id="topic" type="text" placeholder="e.g. World War II, Python basics…" />
+      </div>
+      <div class="field">
+        <label>Difficulty</label>
+        <div class="pill-group">
+          <button class="pill active" onclick="setPill(this,'difficulty')">easy</button>
+          <button class="pill" onclick="setPill(this,'difficulty')">medium</button>
+          <button class="pill" onclick="setPill(this,'difficulty')">hard</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>Question type</label>
+        <div class="type-grid">
+          <button class="type-card active" onclick="setType(this,'multiple-choice')">
+            <span class="type-label">Multiple choice</span>
+            <span class="type-desc">Pick one or more correct options</span>
+          </button>
+          <button class="type-card" onclick="setType(this,'true-false')">
+            <span class="type-label">True / False</span>
+            <span class="type-desc">Decide if each statement is correct</span>
+          </button>
+          <button class="type-card" onclick="setType(this,'open-ended')">
+            <span class="type-label">Open-ended</span>
+            <span class="type-desc">Write your own answer</span>
+          </button>
+          <button class="type-card" onclick="setType(this,'mixed')">
+            <span class="type-label">Mixed</span>
+            <span class="type-desc">Combination of all types</span>
+          </button>
+        </div>
+      </div>
+      <div class="field">
+        <label>Questions: <strong id="count-val">5</strong></label>
+        <input id="count" type="range" min="3" max="20" step="1" value="5"
+               oninput="document.getElementById('count-val').textContent=this.value" />
+        <div class="slider-labels"><span>3</span><span>20</span></div>
+      </div>
+      <div class="field">
+        <label>Time limit (optional)</label>
+        <div class="pill-group">
+          <button class="pill active" onclick="setPill(this,'timer')">None</button>
+          <button class="pill" onclick="setPill(this,'timer')">10 min</button>
+          <button class="pill" onclick="setPill(this,'timer')">20 min</button>
+          <button class="pill" onclick="setPill(this,'timer')">30 min</button>
+        </div>
+      </div>
+      <div id="setup-error" class="error-msg hidden"></div>
+      <button class="btn-primary" onclick="startAIQuiz()">Generate Quiz →</button>
+    </div>
+
+    <div id="source-doc" class="hidden">
+      <div class="field">
+        <label>Upload your .docx or .pdf file</label>
+        <div class="upload-box" onclick="document.getElementById('doc-upload').click()">
+          <p>Click to upload or drag & drop</p>
+          <p class="upload-hint">.docx or .pdf — bold/italic text = correct answers</p>
+          <input id="doc-upload" type="file" accept=".docx,.pdf" style="display:none" onchange="handleFileSelect(this)" />
+        </div>
+        <p id="file-name" class="file-name hidden"></p>
+      </div>
+      <div id="doc-error" class="error-msg hidden"></div>
+      <button class="btn-primary" onclick="startDocQuiz()">Start Quiz →</button>
+    </div>
+  </div>
+</div>
+
+<!-- QUIZ PAGE -->
+<div id="page-quiz" class="page">
+  <div class="quiz-layout">
+
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <p class="sidebar-title">Questions</p>
+        <div id="timer-display" class="timer hidden">00:00</div>
+      </div>
+      <div id="question-nav" class="question-nav"></div>
+      <button class="btn-ghost quit-btn" onclick="confirmQuit()">✕ Quit</button>
+    </div>
+
+    <!-- Main question area -->
+    <div class="quiz-main">
+      <div id="question-area"></div>
+    </div>
+  </div>
+</div>
+
+<!-- RESULTS PAGE -->
+<div id="page-results" class="page">
+  <div class="results-content">
+    <div id="results-hero"></div>
+    <div id="results-review"></div>
+    <div class="result-actions">
+      <button class="btn-primary" onclick="retryWrongAnswers()">Retry wrong answers</button>
+      <button class="btn-secondary" onclick="switchPage('setup')">New quiz</button>
+    </div>
+  </div>
+</div>
+
+<!-- HISTORY PAGE -->
+<div id="page-history" class="page">
+  <div class="subpage-content">
+    <div class="subpage-header">
+      <button class="btn-ghost" onclick="switchPage('setup')">← Back</button>
+      <h2>History</h2>
+      <button class="btn-ghost danger" onclick="clearAllHistory()">Clear all</button>
+    </div>
+    <div id="history-list"></div>
+  </div>
+</div>
+
+<!-- ANALYTICS PAGE -->
+<div id="page-analytics" class="page">
+  <div class="subpage-content">
+    <div class="subpage-header">
+      <button class="btn-ghost" onclick="switchPage('setup')">← Back</button>
+      <h2>Analytics</h2>
+    </div>
+    <div id="analytics-summary" class="metric-row"></div>
+    <div class="chart-section">
+      <p class="chart-label">Score over time</p>
+      <div style="position:relative;height:220px"><canvas id="chart-scores"></canvas></div>
+    </div>
+    <div class="chart-section">
+      <p class="chart-label">Score by topic</p>
+      <div style="position:relative;height:220px"><canvas id="chart-topics"></canvas></div>
+    </div>
+    <div id="weak-topics-section"></div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>

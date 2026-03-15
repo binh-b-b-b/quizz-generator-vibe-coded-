@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+python-dotenv
+anthropic
+python-jose[cryptography]
+passlib[bcrypt]
+python-multipart
+python-docx
+pymupdf
+reportlab
