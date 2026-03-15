@@ -364,8 +364,6 @@ function submitMC() {
   state.answers[state.currentIndex] = record
   updateSidebar()
   renderQuestion(state.currentIndex)
-
-  if (isCorrect) setTimeout(nextQuestion, 800)
 }
 
 function submitOpenEnded() {
@@ -387,16 +385,31 @@ function submitOpenEnded() {
 function gradeOpen(isCorrect) {
   state.answers[state.currentIndex].isCorrect = isCorrect
   updateSidebar()
-  nextQuestion()
+  renderQuestion(state.currentIndex)
 }
 
 function nextQuestion() {
   const next = state.currentIndex + 1
   if (next < state.questions.length) {
     navigateTo(next)
-  } else {
-    finishQuiz()
   }
+  // Do nothing on last question — wait for End Exam button
+}
+
+function confirmFinish() {
+  const total = state.questions.length
+  const answered = Object.keys(state.answers).length
+  const unanswered = total - answered
+
+  if (unanswered > 0) {
+    const go = confirm(`You have ${unanswered} unanswered question(s). End the exam anyway?`)
+    if (!go) return
+  } else {
+    const go = confirm("Submit the exam?")
+    if (!go) return
+  }
+
+  finishQuiz()
 }
 
 // ── Timer ─────────────────────────────────────────────
