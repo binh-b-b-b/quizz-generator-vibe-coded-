@@ -1,46 +1,74 @@
+import re
 import fitz                          # pymupdf
 from docx import Document
-from docx.oxml.ns import qn
 from models.schemas import Question, QuestionType
 from io import BytesIO
 
 
-def extract_bold_runs(paragraph) -> list[str]:
-    """Return list of bold text runs in a paragraph."""
-    return [run.text for run in paragraph.runs if run.bold and run.text.strip()]
+# ── Helpers ───────────────────────────────────────────
 
-
-def extract_italic_runs(paragraph) -> list[str]:
-    """Return list of italic text runs in a paragraph."""
-    return [run.text for run in paragraph.runs if run.italic and run.text.strip()]
-
-
-def is_answer_paragraph(paragraph) -> tuple[bool, list[str]]:
+def is_question_text(text: str) -> bool:
     """
-    Check if a paragraph contains formatted (bold/italic) answer text.
-    Returns (is_answer, list_of_answer_texts)
+    Nhận dạng đoạn văn là câu hỏi nếu:
+    - Bắt đầu bằng "Câu X." hoặc "Question X."
+    - Hoặc bắt đầu bằng số thứ tự "1.", "2."
+    - Hoặc kết thúc bằng "?"
     """
-    bold = extract_bold_runs(paragraph)
-    italic = extract_italic_runs(paragraph)
-    answers = bold or italic
-    return bool(answers), answers
+    t = text.lower().strip()
+    patterns = [
+        r"^câu\s*\d+",           # Câu 1, Câu 2...
+        r"^question\s*\d+",      # Question 1, Question 2...
+        r"^\d+[\.\)]\s+\S",      # 1. text hoặc 1) text
+        r"\?$",                   # kết thúc bằng ?
+    ]
+    return any(re.search(p, t) for p in patterns)
 
 
-def build_questions_from_paragraphs(paragraphs: list) -> list[Question]:
+def split_paragraph_into_virtual(para) -> list:
     """
-    Parse paragraphs into Question objects.
+    Một paragraph trong Word đôi khi chứa nhiều runs,
+    trong đó một run là đáp án và run kế là câu hỏi mới.
+    Hàm này tách paragraph đó thành nhiều 'virtual paragraphs'
+    mỗi cái chứa đúng 1 run.
 
-    Expected document format:
-        Question text (plain)
-        Wrong option (plain)
-        Correct option (bold or italic)     ← single answer
-        Another correct option (bold)       ← makes it multi-answer
+    Trả về list các dict:
+      { 'text': str, 'bold': bool, 'italic': bool }
+    """
+    result = []
+    for run in para.runs:
+        text = run.text.strip()
+        if not text:
+            continue
+        result.append({
+            'text': text,
+            'bold': bool(run.bold),
+            'italic': bool(run.italic),
+        })
+
+    # Nếu paragraph chỉ có 1 run hoặc 0 run thì trả về nguyên
+    if len(result) <= 1:
+        return result
+
+    # Nếu có nhiều runs — kiểm tra xem có run nào là câu hỏi mới không
+    # Nếu có thì tách ra từng run riêng, nếu không thì gộp lại thành 1
+    has_question_run = any(is_question_text(r['text']) for r in result)
+    if has_question_run:
+        return result   # trả về từng run riêng
+    else:
+        # Gộp tất cả text lại, lấy bold/italic của run đầu tiên
+        combined_text = " ".join(r['text'] for r in result)
+        return [{'text': combined_text, 'bold': result[0]['bold'], 'italic': result[0]['italic']}]
+
+
+def build_questions_from_virtual(virtuals: list) -> list:
+    """
+    Nhận list các virtual paragraphs (dict với text/bold/italic)
+    và xây dựng danh sách Question.
 
     Logic:
-        - Walk through paragraphs
-        - When we hit a plain paragraph after collecting options = new question starts
-        - Bold/italic paragraphs in the options block = correct answers
-        - Plain paragraphs in the options block = wrong answers
+    - is_question_text(text) = True → câu hỏi mới
+    - bold hoặc italic → đáp án đúng
+    - còn lại → đáp án sai
     """
     questions = []
     current_question = None
@@ -48,7 +76,6 @@ def build_questions_from_paragraphs(paragraphs: list) -> list[Question]:
     current_correct_indices = []
 
     def flush():
-        """Save current question if we have one."""
         nonlocal current_question, current_options, current_correct_indices
         if current_question and current_options:
             is_multi = len(current_correct_indices) > 1
@@ -65,80 +92,78 @@ def build_questions_from_paragraphs(paragraphs: list) -> list[Question]:
         current_options = []
         current_correct_indices = []
 
-    for para in paragraphs:
-        text = para.text.strip()
+    for v in virtuals:
+        text = v['text']
+        is_bold   = v['bold']
+        is_italic = v['italic']
+
         if not text:
             continue
 
-        is_answer, answer_texts = is_answer_paragraph(para)
+        if is_question_text(text):
+            # Câu hỏi mới — lưu câu cũ trước
+            flush()
+            current_question = text
 
-        if is_answer:
-            # This is a correct answer option
+        elif (is_bold or is_italic) and current_question is not None:
+            # Đáp án đúng
             idx = len(current_options)
-            current_options.append(answer_texts[0] if answer_texts else text)
+            current_options.append(text)
             current_correct_indices.append(idx)
-        else:
-            # Plain text — either a question or a wrong answer option
-            # Heuristic: if it ends with ? it's a question, otherwise it's an option
-            if text.endswith("?") or (current_question is None and not current_options):
-                flush()
-                current_question = text
-            else:
-                current_options.append(text)
 
-    flush()  # Save last question
+        elif current_question is not None:
+            # Đáp án sai
+            current_options.append(text)
+
+        # Nếu current_question là None và không phải câu hỏi → bỏ qua (text rác)
+
+    flush()
     return questions
 
 
-def parse_docx(file_bytes: bytes) -> list[Question]:
-    """Parse a .docx file and extract questions."""
+# ── DOCX parser ───────────────────────────────────────
+
+def parse_docx(file_bytes: bytes) -> list:
     doc = Document(BytesIO(file_bytes))
-    return build_questions_from_paragraphs(doc.paragraphs)
+
+    virtuals = []
+    for para in doc.paragraphs:
+        if not para.text.strip():
+            continue
+        virtuals.extend(split_paragraph_into_virtual(para))
+
+    return build_questions_from_virtual(virtuals)
 
 
-def parse_pdf(file_bytes: bytes) -> list[Question]:
+# ── PDF parser ────────────────────────────────────────
+
+def parse_pdf(file_bytes: bytes) -> list:
     """
-    Parse a PDF file and extract questions.
-    PDFs lose formatting info (bold/italic), so we use ** and * markers
-    as a convention for correct answers in PDF documents.
-
-    Convention:
-        Plain text = question or wrong option
-        **bold text** = correct answer
-        *italic text* = correct answer
+    PDF mất thông tin bold/italic nên dùng ký hiệu:
+    **text** = đáp án đúng
+    *text*   = đáp án đúng
     """
     pdf = fitz.open(stream=file_bytes, filetype="pdf")
-    lines = []
+    virtuals = []
+
     for page in pdf:
-        text = page.get_text()
-        for line in text.splitlines():
-            lines.append(line.strip())
+        for line in page.get_text().splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            if line.startswith("**") and line.endswith("**"):
+                virtuals.append({'text': line[2:-2], 'bold': True, 'italic': False})
+            elif line.startswith("*") and line.endswith("*"):
+                virtuals.append({'text': line[1:-1], 'bold': False, 'italic': True})
+            else:
+                virtuals.append({'text': line, 'bold': False, 'italic': False})
 
-    # Build fake paragraph-like objects from lines
-    class FakePara:
-        def __init__(self, text, is_answer):
-            self.text = text
-            self._is_answer = is_answer
-            self.runs = [self]
-            self.bold = is_answer
-            self.italic = False
-
-    paras = []
-    for line in lines:
-        if not line:
-            continue
-        if line.startswith("**") and line.endswith("**"):
-            paras.append(FakePara(line[2:-2], True))
-        elif line.startswith("*") and line.endswith("*"):
-            paras.append(FakePara(line[1:-1], True))
-        else:
-            paras.append(FakePara(line, False))
-
-    return build_questions_from_paragraphs(paras)
+    return build_questions_from_virtual(virtuals)
 
 
-def build_questions_from_doc(file_bytes: bytes, filename: str) -> list[Question]:
-    """Entry point — detects file type and routes to correct parser."""
+# ── Entry point ───────────────────────────────────────
+
+def build_questions_from_doc(file_bytes: bytes, filename: str) -> list:
     if filename.endswith(".docx"):
         return parse_docx(file_bytes)
     elif filename.endswith(".pdf"):

@@ -212,8 +212,43 @@ async function startDocQuiz() {
 
 // ── Quiz initialisation ───────────────────────────────
 
+function shuffle(array) {
+  const arr = [...array]
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]]
+  }
+  return arr
+}
+
+function shuffleQuestions(questions) {
+  return shuffle(questions).map(q => {
+    // Only shuffle options for multiple-choice and true-false
+    if (!q.options || q.type === "true-false") return q
+
+    // Track which indices are correct before shuffling
+    const indexed = q.options.map((opt, i) => ({
+      opt,
+      isCorrect: q.correct_answers.includes(i)
+    }))
+
+    const shuffled = shuffle(indexed)
+
+    // Rebuild correct_answers indices based on new positions
+    const newCorrectAnswers = shuffled
+      .map((item, i) => item.isCorrect ? i : null)
+      .filter(i => i !== null)
+
+    return {
+      ...q,
+      options: shuffled.map(item => item.opt),
+      correct_answers: newCorrectAnswers
+    }
+  })
+}
+
 function initQuiz(questions, timeLimit) {
-  state.questions    = questions
+  state.questions    = shuffleQuestions(questions)
   state.answers      = {}
   state.currentIndex = 0
   state.selectedOptions = []
