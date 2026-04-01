@@ -25,15 +25,18 @@ def is_question_text(text: str) -> bool:
 
 
 def split_paragraph_into_virtual(para) -> list:
-    """
-    Một paragraph trong Word đôi khi chứa nhiều runs,
-    trong đó một run là đáp án và run kế là câu hỏi mới.
-    Hàm này tách paragraph đó thành nhiều 'virtual paragraphs'
-    mỗi cái chứa đúng 1 run.
+    full_text = para.text.strip()
+    if not full_text:
+        return []
 
-    Trả về list các dict:
-      { 'text': str, 'bold': bool, 'italic': bool }
-    """
+    # QUAN TRỌNG: Kiểm tra toàn bộ paragraph trước
+    # Nếu cả đoạn là câu hỏi → trả về 1 entry duy nhất, bỏ qua bold bên trong
+    # Điều này fix lỗi khi câu hỏi có chữ in đậm bên trong như:
+    # "Câu 24: Trong C, tên mảng M được hiểu là gì?"
+    if is_question_text(full_text):
+        return [{'text': full_text, 'bold': False, 'italic': False}]
+
+    # Không phải câu hỏi → tách theo từng run
     result = []
     for run in para.runs:
         text = run.text.strip()
@@ -45,17 +48,14 @@ def split_paragraph_into_virtual(para) -> list:
             'italic': bool(run.italic),
         })
 
-    # Nếu paragraph chỉ có 1 run hoặc 0 run thì trả về nguyên
     if len(result) <= 1:
         return result
 
-    # Nếu có nhiều runs — kiểm tra xem có run nào là câu hỏi mới không
-    # Nếu có thì tách ra từng run riêng, nếu không thì gộp lại thành 1
+    # Kiểm tra xem có run nào là câu hỏi mới bị gộp vào không (bug cũ câu 5→6)
     has_question_run = any(is_question_text(r['text']) for r in result)
     if has_question_run:
-        return result   # trả về từng run riêng
+        return result
     else:
-        # Gộp tất cả text lại, lấy bold/italic của run đầu tiên
         combined_text = " ".join(r['text'] for r in result)
         return [{'text': combined_text, 'bold': result[0]['bold'], 'italic': result[0]['italic']}]
 
