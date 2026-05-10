@@ -14,7 +14,7 @@ load_dotenv()
 USERS_FILE = Path("users.json")
 JWT_SECRET  = os.getenv("JWT_SECRET", "changeme")
 ALGORITHM   = "HS256"
-TOKEN_EXPIRE_DAYS = 7
+TOKEN_EXPIRE_DAYS = 365
 
 bearer  = HTTPBearer()
 
